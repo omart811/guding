@@ -21,3 +21,7 @@
 *.cjs linguist-language=JavaScript
 *.css linguist-language=CSS
 *.prisma linguist-language=Prisma
+
+# Windows 批处理/命令脚本必须按 CRLF 检出，否则 cmd.exe 解析错乱
+*.cmd text eol=crlf
+*.bat text eol=crlf
