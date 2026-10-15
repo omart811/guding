@@ -33,12 +33,23 @@
           label-position="top"
           @submit.prevent="onSubmit"
         >
+          <!-- 登录失败内联常驻提示：toast 3 秒即消失，容易漏看 -->
+          <el-alert
+            v-if="err"
+            class="mb-3"
+            type="error"
+            :closable="false"
+            show-icon
+            role="alert"
+            :title="err"
+          />
           <el-form-item label="用户名" prop="username">
             <el-input
               v-model="form.username"
               size="large"
               placeholder="请输入用户名"
               autocomplete="username"
+              @input="err = ''"
             >
               <template #prefix><el-icon><User /></el-icon></template>
             </el-input>
@@ -51,6 +62,7 @@
               placeholder="请输入密码"
               autocomplete="current-password"
               show-password
+              @input="err = ''"
               @keyup.enter="onSubmit"
             >
               <template #prefix><el-icon><Lock /></el-icon></template>
@@ -84,6 +96,7 @@ const auth = useAuthStore()
 const router = useRouter()
 const formRef = ref()
 const loading = ref(false)
+const err = ref('')
 const form = reactive({ username: 'admin', password: '' })
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
@@ -93,12 +106,14 @@ const rules = {
 async function onSubmit() {
   await formRef.value?.validate()
   loading.value = true
+  err.value = ''
   try {
     await auth.login(form.username, form.password)
     ElMessage.success('登录成功')
     router.push('/')
   } catch (e: any) {
-    ElMessage.error(errMsg(e))
+    // 内联常驻展示，用户改输入时自动清除
+    err.value = errMsg(e)
   } finally {
     loading.value = false
   }

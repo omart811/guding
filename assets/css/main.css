@@ -574,6 +574,27 @@ html:root .el-message--info .el-message__content,
 html:root .el-message--info .el-message__icon {
   color: var(--info-text);
 }
+/* 内联警告条同理：EP 默认 error 标题 #f56c6c 配 #fef0f0 仅约 3.3:1 */
+html:root .el-alert--success .el-alert__title,
+html:root .el-alert--success .el-alert__description,
+html:root .el-alert--success .el-alert__icon {
+  color: var(--success-text);
+}
+html:root .el-alert--warning .el-alert__title,
+html:root .el-alert--warning .el-alert__description,
+html:root .el-alert--warning .el-alert__icon {
+  color: var(--warning-text);
+}
+html:root .el-alert--error .el-alert__title,
+html:root .el-alert--error .el-alert__description,
+html:root .el-alert--error .el-alert__icon {
+  color: var(--danger-text);
+}
+html:root .el-alert--info .el-alert__title,
+html:root .el-alert--info .el-alert__description,
+html:root .el-alert--info .el-alert__icon {
+  color: var(--info-text);
+}
 
 /* 卡片 */
 html:root .el-card {
