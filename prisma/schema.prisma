@@ -1,0 +1,248 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// 用户
+model User {
+  id        String     @id @default(cuid())
+  username  String     @unique
+  password  String
+  name      String
+  phone     String?
+  status    Int        @default(1)
+  orgId     String?
+  deptId    String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  org       Org?       @relation(fields: [orgId], references: [id])
+  dept      Dept?      @relation(fields: [deptId], references: [id])
+  roles     UserRole[]
+  keeperAssets Asset[] @relation("KeeperAssets")
+
+  @@map("users")
+}
+
+/// 角色：dataScope = ALL 全部 / ORG 本组织 / DEPT 本部门 / SELF 仅本人
+model Role {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  name      String
+  dataScope String    @default("ORG")
+  status    Int        @default(1)
+  createdAt DateTime   @default(now())
+  users     UserRole[]
+  perms     RolePerm[]
+
+  @@map("roles")
+}
+
+/// 权限：MENU 菜单 / BUTTON 按钮，code 形如 system:user:add
+model Permission {
+  id     String     @id @default(cuid())
+  code   String     @unique
+  name   String
+  type   String
+  module String
+  roles  RolePerm[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePerm {
+  roleId String
+  permId String
+  role   Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  perm   Permission @relation(fields: [permId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permId])
+  @@map("role_perms")
+}
+
+/// 组织（公司/分子公司）
+model Org {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  parentId  String?
+  createdAt DateTime @default(now())
+  parent    Org?     @relation("OrgTree", fields: [parentId], references: [id])
+  children  Org[]    @relation("OrgTree")
+  users     User[]
+  depts     Dept[]
+  assets    Asset[]
+
+  @@map("orgs")
+}
+
+/// 部门
+model Dept {
+  id     String @id @default(cuid())
+  name   String
+  orgId  String?
+  org    Org?   @relation(fields: [orgId], references: [id])
+  users  User[]
+  assets Asset[]
+
+  @@map("depts")
+}
+
+/// 资产分类（支持多级）
+model AssetCategory {
+  id         String          @id @default(cuid())
+  code       String          @unique
+  name       String
+  parentId   String?
+  usefulLife Int             @default(60) // 使用年限（月）
+  remark     String?
+  createdAt  DateTime        @default(now())
+  parent     AssetCategory?  @relation("CatTree", fields: [parentId], references: [id])
+  children   AssetCategory[] @relation("CatTree")
+  assets     Asset[]
+
+  @@map("asset_categories")
+}
+
+/// 资产卡片（台账）
+model Asset {
+  id           String        @id @default(cuid())
+  assetNo      String        @unique // 资产编号 ZC+日期+序号
+  name         String
+  categoryId   String
+  spec         String? // 规格型号
+  brand        String? // 品牌
+  unit         String?       @default("台")
+  status       String        @default("IN_STOCK") // IN_STOCK 在库 / IN_USE 在用 / REPAIR 维修 / SCRAPPED 已报废 / DISPOSED 已处置
+  orgId        String? // 所属公司
+  deptId       String? // 使用部门
+  keeperId     String? // 使用人/保管人
+  location     String? // 存放地点
+  purchaseDate DateTime? // 购置日期
+  originalValue Float        @default(0) // 原值
+  netValue     Float         @default(0) // 净值
+  accumulated  Float         @default(0) // 累计折旧
+  supplier     String? // 供应商
+  invoiceNo    String? // 发票号
+  remark       String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  category     AssetCategory @relation(fields: [categoryId], references: [id])
+  org          Org?          @relation(fields: [orgId], references: [id])
+  dept         Dept?         @relation(fields: [deptId], references: [id])
+  keeper       User?         @relation("KeeperAssets", fields: [keeperId], references: [id])
+  flows        AssetFlow[]
+  inventoryItems InventoryItem[]
+
+  @@index([status])
+  @@index([categoryId])
+  @@index([orgId])
+  @@map("assets")
+}
+
+/// 资产流转记录：IN 入库 / ISSUE 领用 / RETURN 归还 / TRANSFER 调拨
+model AssetFlow {
+  id           String   @id @default(cuid())
+  type         String
+  assetId      String
+  fromOrgId    String?
+  fromDeptId   String?
+  fromKeeperId String?
+  toOrgId      String?
+  toDeptId     String?
+  toKeeperId   String?
+  flowDate     DateTime @default(now())
+  operatorId   String?
+  operatorName String?
+  remark       String?
+  createdAt    DateTime @default(now())
+  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([type])
+  @@index([assetId])
+  @@index([createdAt])
+  @@map("asset_flows")
+}
+
+/// 盘点单
+model Inventory {
+  id          String          @id @default(cuid())
+  code        String          @unique // 盘点单号 PD+日期+序号
+  name        String
+  orgId       String? // 盘点范围：公司
+  deptId      String? // 盘点范围：部门
+  categoryId  String? // 盘点范围：分类（含子分类）
+  status      String          @default("DOING") // DOING 进行中 / DONE 已完成
+  startDate   DateTime?
+  endDate     DateTime?
+  ownerId     String? // 负责人
+  ownerName   String?
+  remark      String?
+  createdById String?
+  createdBy   String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  items       InventoryItem[]
+
+  @@index([status])
+  @@index([orgId])
+  @@map("inventories")
+}
+
+/// 盘点明细（创建盘点单时对范围内资产的账面快照）
+model InventoryItem {
+  id               String    @id @default(cuid())
+  inventoryId      String
+  assetId          String
+  assetNo          String // 账面编号（快照）
+  assetName        String // 账面名称（快照）
+  categoryName     String? // 账面分类（快照）
+  expectedStatus   String? // 账面状态
+  expectedOrgId    String?
+  expectedDeptId   String?
+  expectedKeeperId String?
+  expectedLocation String? // 账面存放地点
+  result           String    @default("PENDING") // PENDING 待盘 / NORMAL 正常 / MISSING 盘亏 / DAMAGED 损坏
+  checked          Boolean   @default(false)
+  checkedAt        DateTime?
+  checkerId        String?
+  checkerName      String?
+  remark           String? // 盘点备注
+  inventory        Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  asset            Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([inventoryId])
+  @@index([assetId])
+  @@index([result])
+  @@map("inventory_items")
+}
+
+/// 操作日志
+model OperationLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  userName  String?
+  module    String
+  action    String
+  method    String?
+  path      String?
+  ip        String?
+  success   Int      @default(1)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("operation_logs")
+}
