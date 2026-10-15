@@ -103,6 +103,8 @@ export default defineEventHandler(async (event) => {
 
   原因：EP 内部取值键为 `nodeKey || valueKey || 'value'`（`tree-select/src/tree-select.vue` 的 `key` computed）。业务树节点只有 `id`，漏写 `node-key` 时所有节点取值都是 `undefined`，**点选后 `v-model` 拿不到值、界面无任何反应，且控制台不报错**。这类问题不会在渲染阶段暴露，必须实际点一次节点验证。
 - 表单控件走 `el-form` + `prop` 校验；`el-select` 的 `:value` 一律绑 `id`（`<el-option :value="o.id">`），不要绑对象。
+- **自定义全屏浮层打开期间必须自己吃掉 Esc**：否则 Esc 会冒泡到底层 `el-dialog` 的 overlay（EP `closeOnPressEscape` 默认 true），把表单弹窗一起关掉。写法：window 上用**捕获阶段**监听并 `stopPropagation()`，且只在浮层打开时拦截。
+- **EP 默认 message/通知配色不达 WCAG**（成功字 2.07:1）：全局已在 `assets/css/main.css` 覆盖为语义深色；新增提示不要直接自设 EP 默认 type 配色。
 - 无障碍基线（详见 `docs/ui-audit-2026-10-15.md`）：文字对比度 ≥4.5:1、非文本（边框/焦点环）≥3:1；`aria-label` 必须包含可见文本；EP 样式覆盖一律加 `html:root` 前缀（否则被运行时注入的 EP 样式盖掉）。
 
 ## 6. 安全红线
