@@ -38,3 +38,6 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 *.swp
+
+# 生产密钥文件（PM2 ecosystem 读取，绝不入库）
+ecosystem.env.cjs
