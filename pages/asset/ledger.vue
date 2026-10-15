@@ -176,7 +176,21 @@
     />
 
     <!-- 新增 / 编辑 -->
-    <el-dialog v-model="formVisible" :title="editing ? `编辑资产 ${form.assetNo}` : '新增资产'" width="760px">
+    <el-dialog v-model="formVisible" :title="dialogTitle" width="760px">
+      <!-- 二维码面板：编辑态展示当前资产编号；新增保存成功后展示刚生成的编号 -->
+      <div v-if="qrAsset" class="qr-panel">
+        <div class="qr-panel__code">
+          <AssetQrcode :text="qrAsset.assetNo" :nominal="200" />
+        </div>
+        <div class="qr-panel__info">
+          <div class="qr-panel__no">{{ qrAsset.assetNo }}</div>
+          <div class="qr-panel__name">{{ qrAsset.name || form.name }}</div>
+          <p class="qr-panel__hint">
+            {{ createdAsset ? '资产已保存，打印标签贴到实物上即可完成建档。' : '扫码可识别该资产编号；标签打印后贴到实物上。' }}
+          </p>
+          <el-button size="small" @click="printLabels([qrAsset])">打印此标签</el-button>
+        </div>
+      </div>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
         <el-row :gutter="12">
           <el-col :xs="24" :sm="12">
@@ -247,8 +261,14 @@
         </el-row>
       </el-form>
       <template #footer>
-        <el-button @click="formVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+        <template v-if="!createdAsset">
+          <el-button @click="formVisible = false">取消</el-button>
+          <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+        </template>
+        <template v-else>
+          <el-button @click="finishCreate">完成</el-button>
+          <el-button type="primary" @click="printLabels([qrAsset])">打印标签</el-button>
+        </template>
       </template>
     </el-dialog>
 
@@ -355,6 +375,17 @@ const statCards = computed<{ label: string; value: any; color?: string }[]>(() =
 
 const formVisible = ref(false)
 const editing = ref<any>(null)
+/// 新增保存成功后暂存的资产快照：弹窗不关闭，直接展示二维码与打印入口
+const createdAsset = ref<any>(null)
+/// 弹窗二维码要展示的资产：新建完成态取保存结果，编辑态取表格行
+const qrAsset = computed(() => createdAsset.value || editing.value || null)
+const dialogTitle = computed(() =>
+  createdAsset.value
+    ? `新增成功 · ${form.assetNo}`
+    : editing.value
+      ? `编辑资产 ${form.assetNo}`
+      : '新增资产',
+)
 const formRef = ref()
 const form = reactive<any>({})
 const rules = {
@@ -419,6 +450,7 @@ function reset() {
 
 function openForm(row?: any) {
   editing.value = row || null
+  createdAsset.value = null
   Object.assign(form, {
     assetNo: row?.assetNo || '',
     name: row?.name || '',
@@ -449,11 +481,23 @@ async function save() {
     if (editing.value) {
       await $fetch(`/api/asset/assets/${editing.value.id}`, { method: 'PUT', body: form })
       ElMessage.success('保存成功')
+      formVisible.value = false
     } else {
+      // 新增：保存后不关弹窗，回填编号直接出二维码，可当场打印标签
       const res: any = await $fetch('/api/asset/assets', { method: 'POST', body: form })
-      ElMessage.success(`新增成功，资产编号 ${res.data?.assetNo}`)
+      const created = res.data || {}
+      form.assetNo = created.assetNo || ''
+      createdAsset.value = {
+        id: created.id,
+        assetNo: created.assetNo,
+        name: form.name,
+        location: form.location,
+        // 接口只回 id/编号，org/dept 名称本地补全，供标签展示
+        org: (flatOrgs.value as any[]).find((o) => o.id === form.orgId) || null,
+        dept: (depts.value as any[]).find((x) => x.id === form.deptId) || null,
+      }
+      ElMessage.success(`新增成功，资产编号 ${form.assetNo}，可直接打印二维码标签`)
     }
-    formVisible.value = false
     load()
     loadStats()
   } catch (e: any) {
@@ -461,6 +505,11 @@ async function save() {
   } finally {
     saving.value = false
   }
+}
+
+/// 新建完成态：关闭弹窗（列表在保存时已刷新）
+function finishCreate() {
+  formVisible.value = false
 }
 
 async function remove(row: any) {
@@ -547,19 +596,25 @@ async function doPrint() {
   window.print()
 }
 
-/// 预览层是模态，Esc 关闭（无焦点陷阱，但键盘可退出）
+/// 预览层是模态：Esc 只关预览层。
+/// 必须用捕获阶段 + stopPropagation——否则 Esc 会冒泡到底层 el-dialog 的 overlay，
+/// 把「新增/编辑」表单弹窗一起关掉（EP closeOnPressEscape 默认开启）
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && sheet.value.length) sheet.value = []
+  if (e.key === 'Escape' && sheet.value.length) {
+    e.stopPropagation()
+    e.preventDefault()
+    sheet.value = []
+  }
 }
 
 onMounted(async () => {
-  window.addEventListener('keydown', onKeydown)
+  window.addEventListener('keydown', onKeydown, true)
   await ensure()
   load()
   loadStats()
 })
 
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown, true))
 </script>
 
 <style scoped>
@@ -569,5 +624,47 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   border-radius: 999px;
   flex-shrink: 0;
   display: inline-block;
+}
+
+/* 弹窗二维码面板：64px 矢量码 + 编号/名称 + 打印入口 */
+.qr-panel {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--g-100);
+}
+.qr-panel__code {
+  width: 84px;
+  height: 84px;
+  flex: 0 0 84px;
+  box-sizing: border-box;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.qr-panel__info {
+  min-width: 0;
+}
+.qr-panel__no {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+.qr-panel__name {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--text-1);
+}
+.qr-panel__hint {
+  margin: 6px 0 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-3);
 }
 </style>

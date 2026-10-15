@@ -556,6 +556,24 @@ html:root .el-message {
   border-radius: var(--radius-md) !important;
   box-shadow: var(--shadow-pop) !important;
 }
+/* EP 默认提示色对比度不足（成功字 2.07:1 / 警告字约 2.3:1 / 错误字约 3.3:1），
+   全部换成语义深色文本；图标同色（图形对象也需 ≥3:1） */
+html:root .el-message--success .el-message__content,
+html:root .el-message--success .el-message__icon {
+  color: var(--success-text);
+}
+html:root .el-message--warning .el-message__content,
+html:root .el-message--warning .el-message__icon {
+  color: var(--warning-text);
+}
+html:root .el-message--error .el-message__content,
+html:root .el-message--error .el-message__icon {
+  color: var(--danger-text);
+}
+html:root .el-message--info .el-message__content,
+html:root .el-message--info .el-message__icon {
+  color: var(--info-text);
+}
 
 /* 卡片 */
 html:root .el-card {
