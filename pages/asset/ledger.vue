@@ -6,6 +6,9 @@
         <p class="page-head__hint">共 {{ total }} 条资产，金额单位为元</p>
       </div>
       <div class="page-head__actions">
+        <el-button v-if="selection.length" @click="printLabels(selection)">
+          打印标签（{{ selection.length }}）
+        </el-button>
         <el-button
           v-if="auth.can('asset:ledger:export')"
           :loading="exporting"
@@ -89,12 +92,16 @@
 
     <!-- 台账表格 -->
     <el-table
+      ref="tableRef"
       v-loading="loading"
       :data="list"
       border
       stripe
+      row-key="id"
       empty-text="没有符合条件的资产，可调整筛选条件后重试"
+      @selection-change="(v: any[]) => (selection = v)"
     >
+      <el-table-column type="selection" width="46" fixed reserve-selection />
       <el-table-column prop="assetNo" label="资产编号" width="140" fixed />
       <el-table-column prop="name" label="资产名称" min-width="140" show-overflow-tooltip />
       <el-table-column label="分类" width="110">
@@ -129,8 +136,11 @@
       <el-table-column label="净值(元)" width="120" align="right" class-name="tabular">
         <template #default="{ row }">{{ money(row.netValue) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="190" fixed="right">
+      <el-table-column label="操作" width="250" fixed="right">
         <template #default="{ row }">
+          <el-button link type="info" :aria-label="`查看 ${row.name} 的二维码标签`" @click="printLabels([row])">
+            二维码
+          </el-button>
           <el-button link type="info" :aria-label="`查看 ${row.name} 的流转记录`" @click="openFlows(row)">
             流转
           </el-button>
@@ -274,6 +284,41 @@
         <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
       </el-table>
     </el-dialog>
+
+    <!-- 二维码标签：预览 + 打印。
+         Teleport 到 body，打印时靠 @media print 把其余内容全部隐藏，只留这一层 -->
+    <Teleport to="body">
+      <div
+        v-if="sheet.length"
+        class="label-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label="资产二维码标签"
+      >
+        <div class="label-sheet__bar no-print">
+          <strong>二维码标签（{{ sheet.length }} 张）</strong>
+          <span class="label-sheet__hint">
+            标签 62×32mm，A4 每页 3 列；打印请选「实际大小 / 100%」并关闭页眉页脚
+          </span>
+          <div class="flex-1" />
+          <el-button @click="sheet = []">关闭</el-button>
+          <el-button type="primary" @click="doPrint">打印</el-button>
+        </div>
+        <div class="label-sheet__grid">
+          <div v-for="a in sheet" :key="a.id" class="asset-label">
+            <div class="asset-label__qr">
+              <AssetQrcode :text="qrPayload(a)" />
+            </div>
+            <div class="asset-label__info">
+              <div class="asset-label__no">{{ a.assetNo }}</div>
+              <div class="asset-label__name">{{ a.name }}</div>
+              <div class="asset-label__meta">{{ labelMeta(a) }}</div>
+              <div class="asset-label__brand">固定资产管理系统</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -281,6 +326,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { errMsg } from '~/composables/useErr'
 import { ASSET_STATUS, ASSET_STATUS_TAG, FLOW_TYPE, FLOW_TYPE_TAG } from '~/composables/useDict'
+import { qrPayload } from '~/composables/useQrcode'
 
 definePageMeta({ title: '资产台账' })
 
@@ -290,6 +336,8 @@ const { categories, depts, users, flatOrgs, ensure } = useDictionaries()
 const loading = ref(false)
 const saving = ref(false)
 const exporting = ref(false)
+const tableRef = ref()
+const selection = ref<any[]>([])
 const list = ref<any[]>([])
 const total = ref(0)
 const range = ref<any>(null)
@@ -470,11 +518,48 @@ async function openFlows(row: any) {
   }
 }
 
+// 二维码标签：预览 + 打印
+const sheet = ref<any[]>([])
+
+/// 标签上的辅助信息：公司 · 部门 · 存放地点（有则显示）
+function labelMeta(a: any) {
+  return [a?.org?.name, a?.dept?.name, a?.location].filter(Boolean).join(' · ') || '—'
+}
+
+function printLabels(rows: any[]) {
+  if (!rows?.length) return
+  sheet.value = rows.slice()
+}
+
+async function doPrint() {
+  // 等二维码 SVG 全部就绪，否则会打出空白方块
+  await nextTick()
+  const imgs = Array.from(document.querySelectorAll<HTMLImageElement>('.asset-label__qr img'))
+  await Promise.all(
+    imgs.map((img) =>
+      img.complete
+        ? Promise.resolve()
+        : new Promise((r) => {
+            img.onload = img.onerror = () => r(null)
+          }),
+    ),
+  )
+  window.print()
+}
+
+/// 预览层是模态，Esc 关闭（无焦点陷阱，但键盘可退出）
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && sheet.value.length) sheet.value = []
+}
+
 onMounted(async () => {
+  window.addEventListener('keydown', onKeydown)
   await ensure()
   load()
   loadStats()
 })
+
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <style scoped>
