@@ -23,6 +23,14 @@ export const useAuthStore = defineStore('auth', {
     },
     /// 服务端渲染时用 useRequestFetch 透传 Cookie；客户端等价于 $fetch
     async fetchMe() {
+      // 没有 token 就不发请求：否则 /api/auth/me 返回 401，未登录访客每次开页
+      // 都会在控制台留一条 "Failed to load resource" 红色错误
+      const token = useCookie('fam_token')
+      if (!token.value) {
+        this.user = null
+        this.perms = []
+        return
+      }
       try {
         const res: any = await useRequestFetch()('/api/auth/me')
         this.user = res.data
